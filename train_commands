@@ -1,4 +1,4 @@
-1. Get yolo repository from: 
+1. Get yolo repository from: https://github.com/Beerwalker/car_detector
 
 2. Download dataset.zip and extract it next to yolov5 root directory.
 # parent
@@ -8,7 +8,7 @@
 3. Download train.zip and extract into yolov5/runs
 
 4. Run training. If there's not enough video RAM play with lower --batch value.:
-    python3 train.py --img 640 --batch 64 --epochs 30 --data ../dataset/dataset_config.yaml --weights yolov5s.pt
+    python3 train.py --img 640 --batch 64 --epochs 30 --data dataset_config.yaml --weights yolov5s.pt
 
 5. Export model to openvino:
     python3 export.py --weights runs/train/exp/weights/best.pt --include openvino
