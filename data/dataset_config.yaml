@@ -1,0 +1,14 @@
+# download command/URL (optional)
+#download: https://github.com/ultralytics/yolov5/releases/download/v1.0/coco128.zip
+
+# train and val data as 1) directory: path/images/, 2) file: path/images.txt, or 3) list: [path1/images/, path2/images/]
+#train: [/data/A2D2/images/, /data/BDD/images/, /data/KITTI/images/]
+#val: [/data/A2D2/images/, /data/BDD/images/, /data/KITTI/images/]
+train: ['../dataset/BDD_train/images/', '../dataset/KITTI_train/images/']
+val: ['../dataset/BDD_test/images/', '../dataset/KITTI_test/images/']
+
+# number of classes
+nc: 7
+
+# class names
+names: ['person', 'bicycle', 'car', 'motorcycle', 'bus', 'train', 'truck']
