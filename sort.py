@@ -90,7 +90,7 @@ class KalmanBoxTracker(object):
   This class represents the internal state of individual tracked objects observed as bbox.
   """
   count = 0
-  def __init__(self,bbox):
+  def __init__(self,bbox,confidence,nclass,timestamp):
     """
     Initialises a tracker using initial bounding box.
     """
@@ -114,7 +114,18 @@ class KalmanBoxTracker(object):
     self.hit_streak = 0
     self.age = 0
 
-  def update(self,bbox):
+    self.confidence = confidence
+    self.nclass = int(nclass)
+    self.timestamp_begin = timestamp
+    self.timestamp_best = timestamp
+    self.timestamp_end = timestamp
+    self.bbox_begin = convert_x_to_bbox(self.kf.x).reshape(4)
+    self.bbox_best = self.bbox_begin
+    self.bbox_end = self.bbox_begin
+
+    
+
+  def update(self,bbox,confidence,nclass,timestamp):
     """
     Updates the state vector with observed bbox.
     """
@@ -123,6 +134,15 @@ class KalmanBoxTracker(object):
     self.hits += 1
     self.hit_streak += 1
     self.kf.update(convert_bbox_to_z(bbox))
+    
+    rbbox = convert_x_to_bbox(self.kf.x).reshape(4)
+    self.bbox_end = rbbox
+    self.timestamp_end = timestamp
+    if self.confidence < confidence:
+        self.confidence = confidence
+        self.nclass = int(nclass)
+        self.timestamp_best = timestamp
+        self.bbox_best = rbbox
 
   def predict(self):
     """
@@ -142,7 +162,12 @@ class KalmanBoxTracker(object):
     """
     Returns the current bounding box estimate.
     """
-    return convert_x_to_bbox(self.kf.x)
+    kfx = convert_x_to_bbox(self.kf.x).reshape(4)
+    app = np.array((self.confidence,self.nclass)).reshape(2)
+    res = np.append(kfx,app)
+    return res, \
+      (self.timestamp_begin, self.timestamp_best, self.timestamp_end), \
+      (self.bbox_begin, self.bbox_best, self.bbox_end)
 
 
 def associate_detections_to_trackers(detections,trackers,iou_threshold = 0.3):
@@ -203,7 +228,7 @@ class Sort(object):
     self.trackers = []
     self.frame_count = 0
 
-  def update(self, dets=np.empty((0, 5))):
+  def update(self, dets=np.empty((0, 6)), timestamp=0):
     """
     Params:
       dets - a numpy array of detections in the format [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
@@ -229,22 +254,25 @@ class Sort(object):
 
     # update matched trackers with assigned detections
     for m in matched:
-      self.trackers[m[1]].update(dets[m[0], :])
+      det = dets[m[0], :]
+      self.trackers[m[1]].update(det[0:4], det[4], det[5], timestamp)
 
     # create and initialise new trackers for unmatched detections
     for i in unmatched_dets:
-        trk = KalmanBoxTracker(dets[i,:])
+        trk = KalmanBoxTracker(dets[i,0:4], dets[i,4], dets[i,5], timestamp)
         self.trackers.append(trk)
     i = len(self.trackers)
+    finalized = []
     for trk in reversed(self.trackers):
-        d = trk.get_state()[0]
+        d, _, _ = trk.get_state()
         if (trk.time_since_update < 1) and (trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits):
-          ret.append(np.concatenate((d,[trk.id+1])).reshape(1,-1)) # +1 as MOT benchmark requires positive
+          ret.append(np.concatenate((d,[trk.id])).reshape(1,-1)) # +1 as MOT benchmark requires positive
         i -= 1
         # remove dead tracklet
         if(trk.time_since_update > self.max_age):
+          finalized.append(self.trackers[i])
           self.trackers.pop(i)
     if(len(ret)>0):
-      return np.concatenate(ret)
-    return np.empty((0,5))
+      return np.concatenate(ret), finalized
+    return np.empty((0,7)), []
 

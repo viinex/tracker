@@ -24,10 +24,39 @@
                     "dynamic": true
                 }
             }
+        },
+        {
+            "type": "h264sourceplugin",
+            "name": "cam2",
+            "dynamic": false,
+            "library": "vnxvideo.dll",
+            "factory" : "create_media_file_live_source",
+            "init" : {
+                "file": "C:\\video1\\15vwtea-20220302-143.mp4"
+            }
+        },
+        {
+            "type": "renderer",
+            "name": "rend2",
+            "share": true,
+            "layout": {
+                "size": [640,360],
+                "viewports": [
+                    {
+                        "input": 0,
+                        "src": [0,0,1,1],
+                        "dst": [0,0,1,1]
+                    }
+                ],
+                "encoder":{
+                    "dynamic": true
+                }
+            }
         }
     ],
     "links":
     [
-        ["rend1","cam1"]
+        ["rend1","cam1"],
+        ["rend2","cam2"]
     ]
 }

@@ -2,7 +2,7 @@ import argparse
 import os
 import sys
 import time
-from datetime import datetime
+import datetime
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +10,8 @@ import yaml
 from tqdm import tqdm
 import openvino.inference_engine as ie
 import cv2
+
+from sort import *
 
 import vnxpy
 
@@ -213,13 +215,22 @@ def nms(bounding_boxes, confidence_score, classes, threshold):
 
     return picked_boxes, np.asarray(picked_score), np.asarray(picked_class)
 
-        
+def event_bbox(w, h, bbox):
+    return {'left': bbox[0] / w,
+            'top': bbox[1] / h,
+            'right': bbox[2] / w,
+            'bottom': bbox[3] / h }
+
+def event_timestamp(timestamp):
+    return datetime.datetime.fromtimestamp(timestamp/1000.0, tz=datetime.timezone.utc).isoformat().replace('+00:00', 'Z')
+
 class ObjectDetector(vnxpy.Analytics1):
 
     def __init__(self, vv: vnxpy.Vnxvideo = None):
         super().__init__(vv)
         self.set_params()
         self.init_ie()
+        self.tracker = Sort()
 
     def set_params(self):
         if 'skip' in self.config:
@@ -252,10 +263,10 @@ class ObjectDetector(vnxpy.Analytics1):
         else:
             self.iou_threshold = 0.45
 
-        if 'send_raw_detections' in self.config:
-            self.send_raw_detections = self.config['send_raw_detections']
+        if 'finalized_only' in self.config:
+            self.finalized_only = self.config['finalized_only']
         else:
-            self.send_raw_detections = False
+            self.finalized_only = True
 
     def init_ie(self):
         self.core = ie.IECore()
@@ -307,7 +318,7 @@ class ObjectDetector(vnxpy.Analytics1):
         #hand_written_nms
         boxes, conf, classes = nms(boxes, conf, classes, self.iou_threshold)
         if len(boxes) == 0:
-            detects = np.zeros((0,6))
+            detects = np.empty((0,6))
         else:
             detects = np.concatenate((boxes, conf[...,np.newaxis], classes[...,np.newaxis]),1) #xyxy conf class
 
@@ -316,25 +327,48 @@ class ObjectDetector(vnxpy.Analytics1):
         detects[:, 1] = (detects[:, 1] - dh) / ratio[1]
         detects[:, 2] = (detects[:, 2] - dw) / ratio[0]
         detects[:, 3] = (detects[:, 3] - dh) / ratio[1]
-        
-        for i, detect in enumerate(detects):
-            if self.send_raw_detections:
-                self.event_from_detection(ow, oh, timestamp, detect)
-            imorig = cv2.rectangle(imorig, (int(detect[0]), int(detect[1])), (int(detect[2]), int(detect[3])), (255, 0, 0), 2)
+
+        tracked, finalized = self.tracker.update(detects, timestamp)
+
+        etimestamp = event_timestamp(timestamp)
+        for _, t in enumerate(tracked):
+            if not self.finalized_only:
+                self.event_from_detection(ow, oh, etimestamp, t)
+            imorig = cv2.rectangle(imorig, (int(t[0]), int(t[1])), (int(t[2]), int(t[3])), (255, 0, 0), 2)
+
+        for _, f in enumerate(finalized):
+            self.event_from_finalized_track(ow, oh, f)
+            
         cv2.imshow("Letter", imorig)
         cv2.waitKey(10) 
-        
-        print(self.nframe)
+
 
     def event_from_detection(self, w, h, timestamp, detect):
-        class_name = (self.classes[int(detect[5])]) if detect[5] < len(self.classes) else detect[5]
+        nclass = (self.classes[int(detect[5])]) if detect[5] < len(self.classes) else detect[5]
+        track_id = int(detect[6]) if len(detect[:]) >= 6 else -1
         self.event('ObjectDetected',
-                   {'left': detect[0] / w,
-                    'top': detect[1] / h,
-                    'right': detect[2] / w,
-                    'bottom': detect[3] / h,
+                   {'rect': event_bbox(w,h,detect),
                     'confidence': detect[4],
-                    'class': class_name,
-                    'timestamp': timestamp})
+                    'class': nclass,
+                    'timestamp': timestamp,
+                    'track_id': track_id})
+        
+    def event_from_finalized_track(self, w, h, fin):
+        nclass = (self.classes[fin.nclass]) if fin.nclass < len(self.classes) else fin.nclass
+        self.event('ObjectTrackFinalized',
+                   {'class': nclass,
+                    'timestamps': {
+                        'first': event_timestamp(fin.timestamp_begin),
+                        'best': event_timestamp(fin.timestamp_best),
+                        'last': event_timestamp(fin.timestamp_end)
+                        },
+                    'rect': {
+                        'first': event_bbox(w,h,fin.bbox_begin),
+                        'best': event_bbox(w,h,fin.bbox_best),
+                        'last': event_bbox(w,h,fin.bbox_end),
+                        },
+                    'track_id': fin.id
+                    })
+
 
 ObjectDetector().run()
