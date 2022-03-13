@@ -232,6 +232,9 @@ class ObjectDetector(vnxpy.Analytics1):
         self.init_ie()
         self.tracker = Sort()
 
+        if self.render != None:
+            self.local_server = self.vnxvideo.local_server(self.render, 32)
+
     def set_params(self):
         if 'skip' in self.config:
             self.skip = self.config['skip']
@@ -267,6 +270,11 @@ class ObjectDetector(vnxpy.Analytics1):
             self.finalized_only = self.config['finalized_only']
         else:
             self.finalized_only = True
+
+        if 'render' in self.config:
+            self.render = self.config['render']
+        else:
+            self.render = None
 
     def init_ie(self):
         self.core = ie.IECore()
@@ -334,13 +342,22 @@ class ObjectDetector(vnxpy.Analytics1):
         for _, t in enumerate(tracked):
             if not self.finalized_only:
                 self.event_from_detection(ow, oh, etimestamp, t)
-            imorig = cv2.rectangle(imorig, (int(t[0]), int(t[1])), (int(t[2]), int(t[3])), (255, 0, 0), 2)
+            if self.render != None:
+                left, top, right, bottom = (int(t[0]), int(t[1]), int(t[2]), int(t[3]))
+                imorig = cv2.rectangle(imorig, (left,top), (right,bottom), (255, 0, 0), 2)
+                label = "{0} {1} {2:.2f}".format(int(t[6]), self.classes[int(t[5])], t[4])
+                imorig = cv2.putText(imorig, label, (left+10, top+20), cv2.FONT_HERSHEY_PLAIN,\
+                                     1, (255,0,0), 1, cv2.LINE_AA)
 
         for _, f in enumerate(finalized):
             self.event_from_finalized_track(ow, oh, f)
-            
-        cv2.imshow("Letter", imorig)
-        cv2.waitKey(10) 
+
+        if self.render != None:
+            self.local_server.publish_rgb(imorig, timestamp)
+
+        #cv2.imshow("Letter", imorig)
+        #cv2.waitKey(10)
+
 
 
     def event_from_detection(self, w, h, timestamp, detect):
