@@ -9,7 +9,7 @@
         },
         {
             "type": "renderer",
-            "name": "rend1",
+            "name": "cam1-raw",
             "share": true,
             "layout": {
                 "size": [640,360],
@@ -37,7 +37,7 @@
         },
         {
             "type": "renderer",
-            "name": "rend2",
+            "name": "cam2-raw",
             "share": true,
             "layout": {
                 "size": [640,360],
@@ -52,11 +52,89 @@
                     "dynamic": true
                 }
             }
+        },
+        {
+            "type": "process",
+            "name": "cam2-tracker",
+            "executable": "C:\\Software\\python-3.9.10-embed-amd64-vnx-tracker\\python.exe",
+            "args": ["vnx_vino_inference.py"],
+            "cwd": "C:\\Software\\python-3.9.10-embed-amd64-vnx-tracker\\tracker",
+            "init": {
+                "video_source": "cam2-raw",
+                "origin_video_source": "cam2",
+                "skip": 1,
+                "network": "best_openvino_model_2\\best.xml",
+                "classes": ["person", "bicycle", "car", "motorcycle", "bus", "train", "truck"],
+                "device": "CPU",
+                "finalized_only": true,
+                "render": "cam2-rend-res"
+            }            
+        },
+        {
+            "type": "rawvideo",
+            "name": "cam2-res",
+            "rem": [
+                "This is a video source for streaming rendered detection/tracking results",
+                "published by respective cam2-tracker object. Key thing to spot is",
+                "The 'capture.address' value (which is equal to 'cam2-rend-res'),",
+                "which should match the value 'init.render' of the tracker config."
+                ],
+            "capture": {
+                "type": "localtransport",
+                "address": "cam2-rend-res"
+            },
+            "encoder": {
+                "type": "cpu",
+                "quality": "small_size",
+                "preset": "veryfast",
+                "profile": "baseline",
+                "dynamic": true
+            }
+        },
+        {
+            "type": "sqlite",
+            "name": "db0",
+            "connect": {
+                "database": "var/viinex-tracking-db0.sqlite"
+            },
+            "connections": 1,
+            "events": {
+                "store": true,
+                "writers": 2,
+                "limits": {
+                    "rem max_count": 40000,
+                    "max_depth_abs_hours": 720,
+                    "storage_aware": true
+                }
+            },
+            "acls": false
+        },
+        {
+            "type": "webserver",
+            "name": "web0",
+            "port": 8880,
+            "staticpath": "share/web",
+            "cors": "*"
+        },
+        {
+            "type": "webrtc",
+            "name": "webrtc0",
+            "stunsrv": 3478,
+            "meta": {
+                "rem stun": [["stun.l.google.com", 19302]],
+                "stunsrv": 3478
+            },
+            "key": "etc/ssl/private/sample-privkey.pem",
+            "certificate": "etc/ssl/private/sample-certificate.pem"
         }
+        
     ],
     "links":
     [
-        ["rend1","cam1"],
-        ["rend2","cam2"]
+        ["web0",["webrtc0","db0"]],
+        ["cam1","cam1-raw"],
+        ["cam2","cam2-raw"],
+        [["web0","db0"], ["cam2-tracker"]],
+        [["web0","webrtc0"], ["cam1", "cam2", "cam2-res"]]
     ]
 }
