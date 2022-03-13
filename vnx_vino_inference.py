@@ -11,6 +11,8 @@ from tqdm import tqdm
 import openvino.inference_engine as ie
 import cv2
 
+sys.path.append('.')
+
 from sort import *
 
 import vnxpy
@@ -216,10 +218,10 @@ def nms(bounding_boxes, confidence_score, classes, threshold):
     return picked_boxes, np.asarray(picked_score), np.asarray(picked_class)
 
 def event_bbox(w, h, bbox):
-    return {'left': bbox[0] / w,
-            'top': bbox[1] / h,
-            'right': bbox[2] / w,
-            'bottom': bbox[3] / h }
+    return {'left': round(bbox[0] / w, 3),
+            'top': round(bbox[1] / h, 3),
+            'right': round(bbox[2] / w, 3),
+            'bottom': round(bbox[3] / h, 3) }
 
 def event_timestamp(timestamp):
     return datetime.datetime.fromtimestamp(timestamp/1000.0, tz=datetime.timezone.utc).isoformat().replace('+00:00', 'Z')
@@ -265,6 +267,11 @@ class ObjectDetector(vnxpy.Analytics1):
             self.iou_threshold = self.config['iou_threshold']
         else:
             self.iou_threshold = 0.45
+
+        if 'origin_video_source' in self.config:
+            self.origin_video_source = self.config['origin_video_source']
+        else:
+            self.origin_video_source = self.config['video_source']
 
         if 'finalized_only' in self.config:
             self.finalized_only = self.config['finalized_only']
@@ -365,15 +372,17 @@ class ObjectDetector(vnxpy.Analytics1):
         track_id = int(detect[6]) if len(detect[:]) >= 6 else -1
         self.event('ObjectDetected',
                    {'rect': event_bbox(w,h,detect),
-                    'confidence': detect[4],
+                    'confidence': round(detect[4], 3),
                     'class': nclass,
                     'timestamp': timestamp,
-                    'track_id': track_id})
+                    'track_id': track_id,
+                    'video_source': self.origin_video_source})
         
     def event_from_finalized_track(self, w, h, fin):
         nclass = (self.classes[fin.nclass]) if fin.nclass < len(self.classes) else fin.nclass
         self.event('ObjectTrackFinalized',
                    {'class': nclass,
+                    'confidence': round(fin.confidence, 3),
                     'timestamps': {
                         'first': event_timestamp(fin.timestamp_begin),
                         'best': event_timestamp(fin.timestamp_best),
@@ -384,7 +393,8 @@ class ObjectDetector(vnxpy.Analytics1):
                         'best': event_bbox(w,h,fin.bbox_best),
                         'last': event_bbox(w,h,fin.bbox_end),
                         },
-                    'track_id': fin.id
+                    'track_id': fin.id,
+                    'video_source': self.origin_video_source
                     })
 
 
