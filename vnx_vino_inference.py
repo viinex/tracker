@@ -294,6 +294,8 @@ class ObjectDetector(vnxpy.Analytics1):
         self.executable_network = self.core.load_network(self.network, device_name=self.device_name, num_requests=1)
 
     def onsample(self, sample : vnxpy.RawSample, timestamp):
+        if not sample.is_video:
+            return
         self.nframe = self.nframe+1
         
         if self.skip > 0 and self.nframe % self.skip != 0:
